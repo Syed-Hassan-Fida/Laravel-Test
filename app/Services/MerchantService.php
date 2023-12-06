@@ -7,6 +7,7 @@ use App\Models\Affiliate;
 use App\Models\Merchant;
 use App\Models\Order;
 use App\Models\User;
+use Illuminate\Support\Facades\Auth;
 
 class MerchantService
 {
@@ -20,18 +21,43 @@ class MerchantService
      */
     public function register(array $data): Merchant
     {
-        // TODO: Complete this method
+        // Create a new user
+        $user = User::create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => bcrypt($data['api_key']), // Store API key in the password field
+            'type' => User::TYPE_MERCHANT, // Assuming MERCHANT_TYPE is a constant in the User model
+        ]);
+
+        // Create a new merchant associated with the user
+        $merchant = Merchant::create([
+            'user_id' => $user->id,
+            'domain' => $data['domain'],
+        ]);
+
+        return $merchant;
     }
 
     /**
      * Update the user
      *
+     * @param User $user
      * @param array{domain: string, name: string, email: string, api_key: string} $data
      * @return void
      */
     public function updateMerchant(User $user, array $data)
     {
-        // TODO: Complete this method
+        // Update the user's name, email, and password (API key)
+        $user->update([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => bcrypt($data['api_key']),
+        ]);
+
+        // Update the associated merchant's domain
+        $user->merchant->update([
+            'domain' => $data['domain'],
+        ]);
     }
 
     /**
@@ -43,7 +69,10 @@ class MerchantService
      */
     public function findMerchantByEmail(string $email): ?Merchant
     {
-        // TODO: Complete this method
+        // Find the user by email and return the associated merchant
+        $user = User::where('email', $email)->first();
+
+        return $user ? $user->merchant : null;
     }
 
     /**
@@ -55,6 +84,27 @@ class MerchantService
      */
     public function payout(Affiliate $affiliate)
     {
-        // TODO: Complete this method
+        // Get all unpaid orders for the affiliate
+        $unpaidOrders = Order::where('affiliate_id', $affiliate->id)
+            ->where('paid', false)
+            ->get();
+
+        // Dispatch a job for each unpaid order
+        foreach ($unpaidOrders as $order) {
+            PayoutOrderJob::dispatch($order);
+        }
+    }
+
+    public function getMerchantId(): ?int
+    {
+        // Get the currently authenticated user
+        $user = Auth::user();
+
+        // Check if the user is authenticated and has an associated merchant
+        if ($user && $user->merchant) {
+            return $user->merchant->id;
+        }
+
+        return null;
     }
 }
